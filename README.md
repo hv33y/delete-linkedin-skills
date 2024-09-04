@@ -1,4 +1,4 @@
-# LinkedIn Profile Skills Removal
+## LinkedIn Profile Skills Removal
 
 ### Features
 A Script to mass remove skills from own LinkedIn Profile you've already added.
