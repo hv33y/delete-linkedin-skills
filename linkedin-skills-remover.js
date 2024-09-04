@@ -1,3 +1,24 @@
+let notFoundCounter = 0;
+const maxNotFoundAttempts = 5;
+
+function displayThankYouMessage(reason) {
+    console.log("%c Thank you for using the script! %c\n\n" +
+                `${reason}\n` +
+                "You can visit github.com/hv33y for more useful scripts. \n\n" +
+                "Have a great day!", 
+                "background: #222; color: #bada55; font-size: 20px; font-weight: bold;", 
+                "background: #fff; color: #000; font-size: 16px;");
+}
+
+function checkForEmptyState() {
+    const emptyState = document.querySelector('section.full-width.artdeco-empty-state');
+    if (emptyState && emptyState.textContent.includes("When you add new skills they'll show up here")) {
+        displayThankYouMessage("All skills have been successfully deleted.");
+        return true;
+    }
+    return false;
+}
+
 function checkForSuccessMessage() {
     return new Promise((resolve) => {
         const checkInterval = setInterval(() => {
@@ -22,9 +43,17 @@ function clickFirstButton() {
     if (firstButton) {
         firstButton.click();
         console.log("Button '#navigation-add-edit-deeplink-edit-skills' clicked successfully");
+        notFoundCounter = 0; // Reset the counter on success
         setTimeout(clickDeleteSkillButton, 1000);
+        return true;
     } else {
-        console.log("Button '#navigation-add-edit-deeplink-edit-skills' not found");
+        notFoundCounter++;
+        console.log(`Button '#navigation-add-edit-deeplink-edit-skills' not found. Attempt ${notFoundCounter} of ${maxNotFoundAttempts}.`);
+        if (notFoundCounter >= maxNotFoundAttempts) {
+            displayThankYouMessage("The button could not be found after several attempts.");
+            return false;
+        }
+        return true;
     }
 }
 
@@ -56,11 +85,18 @@ function clickFinalDeleteButton() {
 }
 
 async function runProcess() {
-    clickFirstButton();
+    if (checkForEmptyState()) {
+        return;
+    }
+    
+    if (!clickFirstButton()) {
+        return; 
+    }
+
     const success = await checkForSuccessMessage();
     if (success) {
         console.log("Starting next deletion cycle...");
-        setTimeout(runProcess, 1000);
+        setTimeout(runProcess, 1000); // Start next cycle after 1 second
     } else {
         console.log("Stopping the process due to missing success message.");
     }
