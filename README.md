@@ -1,12 +1,12 @@
-## LinkedIn Profile Skills Removal
+# LinkedIn Profile Skills Removal
 
-### Features
+## Features
 A Script to mass remove skills from own LinkedIn Profile you've already added.
 
-### Browser compatibility
+## Browser compatibility
 Supported in effectively all browsers.
 
-### How
+## How
 
 Use the scripts provided here to delete posts, comments and likes:
 
