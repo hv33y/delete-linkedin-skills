@@ -1,5 +1,3 @@
-allow pasting
-
 function checkForSuccessMessage() {
     return new Promise((resolve) => {
         const checkInterval = setInterval(() => {
