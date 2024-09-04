@@ -1,24 +1,6 @@
 let notFoundCounter = 0;
 const maxNotFoundAttempts = 5;
 
-function displayThankYouMessage(reason) {
-    console.log("%c Thank you for using the script! %c\n\n" +
-                `${reason}\n` +
-                "You can visit github.com/hv33y for more useful scripts. \n\n" +
-                "Have a great day!", 
-                "background: #222; color: #bada55; font-size: 20px; font-weight: bold;", 
-                "background: #fff; color: #000; font-size: 16px;");
-}
-
-function checkForEmptyState() {
-    const emptyState = document.querySelector('section.full-width.artdeco-empty-state');
-    if (emptyState && emptyState.textContent.includes("When you add new skills they'll show up here")) {
-        displayThankYouMessage("All skills have been successfully deleted.");
-        return true;
-    }
-    return false;
-}
-
 function checkForSuccessMessage() {
     return new Promise((resolve) => {
         const checkInterval = setInterval(() => {
@@ -84,6 +66,24 @@ function clickFinalDeleteButton() {
     }
 }
 
+function displayThankYouMessage(reason) {
+    console.log("%c Thank you for using the script! %c\n\n" +
+                `${reason}\n` +
+                "You can visit github.com/hv33y for more useful scripts. \n\n" +
+                "Have a great day!", 
+                "background: #222; color: #bada55; font-size: 20px; font-weight: bold;", 
+                "background: #fff; color: #000; font-size: 16px;");
+}
+
+function checkForEmptyState() {
+    const emptyState = document.querySelector('section.full-width.artdeco-empty-state');
+    if (emptyState && emptyState.textContent.includes("When you add new skills they'll show up here")) {
+        displayThankYouMessage("All skills have been successfully deleted.");
+        return true;
+    }
+    return false;
+}
+
 async function runProcess() {
     if (checkForEmptyState()) {
         return;
@@ -96,7 +96,7 @@ async function runProcess() {
     const success = await checkForSuccessMessage();
     if (success) {
         console.log("Starting next deletion cycle...");
-        setTimeout(runProcess, 1000); // Start next cycle after 1 second
+        setTimeout(runProcess, 1000);
     } else {
         console.log("Stopping the process due to missing success message.");
     }
