@@ -1,159 +1,132 @@
 (async function () {
-    var POLL = 50;
-    var TIMEOUT = 10000;
-    var PAUSE_BETWEEN = 500; // ms between each deletion
-    var MAX_RETRIES = 3;     // retries per skill before skipping
+    var TIMEOUT = 12000;
+    var PAUSE_BETWEEN = 5000;
+    var BREAK_EVERY = 10;
+    var BREAK_DURATION = 60000;
+    var MAX_DELETIONS = 50;
 
-    function visible(el) { return el && el.offsetParent !== null; }
+    if (window.linkedinSkillsRemover && window.linkedinSkillsRemover.running) {
+        console.warn('Skills remover is already running.');
+        return;
+    }
+
+    var state = { running: true, stop: false, deleted: 0 };
+    window.linkedinSkillsRemover = state;
+
+    function visible(el) { return el && el.getClientRects().length > 0; }
 
     function btnByText(txt) {
-        return Array.prototype.slice.call(document.querySelectorAll('button'))
+        return Array.from(document.querySelectorAll('button'))
             .find(function (b) { return visible(b) && b.innerText.trim() === txt; });
     }
 
     function skillEditLinks() {
-        return Array.prototype.slice.call(
-            document.querySelectorAll('a[href*="/details/skills/edit/forms/"]')
-        ).filter(function (a) {
-            var label = (a.getAttribute('aria-label') || '').trim();
-            return visible(a) && /^edit .+ skill$/i.test(label);
-        });
+        return Array.from(document.querySelectorAll('a[href*="/details/skills/edit/forms/"]'))
+            .filter(function (a) {
+                return visible(a) && /^edit .+ skill$/i.test(a.getAttribute('aria-label') || '');
+            });
     }
 
     function closeUpsell() {
         var dialogs = document.querySelectorAll('[role="dialog"], .artdeco-modal');
         for (var i = 0; i < dialogs.length; i++) {
-            var d = dialogs[i];
-            if (!visible(d)) continue;
-            if (!/premium|try it free|free trial|on a roll/i.test(d.innerText)) continue;
-            var x = d.querySelector('button[aria-label*="Dismiss" i], button[aria-label*="Close" i]');
-            if (x) { x.click(); return true; }
-            var nt = Array.prototype.slice.call(d.querySelectorAll('button'))
-                .find(function (b) { return /no thanks|not now|maybe later|skip|dismiss|close/i.test(b.innerText); });
-            if (nt) { nt.click(); return true; }
+            var dialog = dialogs[i];
+            if (!visible(dialog) || !/premium|try it free|free trial|on a roll/i.test(dialog.innerText)) continue;
+            var close = dialog.querySelector('button[aria-label*="Dismiss" i], button[aria-label*="Close" i]') ||
+                Array.from(dialog.querySelectorAll('button')).find(function (b) {
+                    return /no thanks|not now|maybe later|skip|dismiss|close/i.test(b.innerText);
+                });
+            if (close) { close.click(); return true; }
         }
         return false;
     }
 
-    function closeAllModals() {
-        closeUpsell();
-        document.querySelectorAll('[role="dialog"] button[aria-label*="Close" i], [role="dialog"] button[aria-label*="Dismiss" i]').forEach(function (b) {
-            if (visible(b)) b.click();
-        });
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+
+    async function pause(ms) {
+        var end = Date.now() + ms;
+        while (!state.stop && Date.now() < end) {
+            await sleep(Math.min(250, end - Date.now()));
+        }
     }
 
-    function waitFor(getter) {
-        return new Promise(function (resolve, reject) {
-            var start = Date.now();
-            (function poll() {
-                closeUpsell();
-                var el;
-                try { el = getter(); } catch (e) {}
-                if (el) return resolve(el);
-                if (Date.now() - start > TIMEOUT) return reject(new Error("timeout"));
-                setTimeout(poll, POLL);
-            })();
-        });
-    }
-
-    function sleep(ms) {
-        return new Promise(function (r) { setTimeout(r, ms); });
+    async function waitFor(getter) {
+        var start = Date.now();
+        while (!state.stop && Date.now() - start < TIMEOUT) {
+            closeUpsell();
+            var result = getter();
+            if (result) return result;
+            await sleep(200);
+        }
+        throw new Error(state.stop ? 'Stopped by user' : 'Timed out waiting for LinkedIn');
     }
 
     async function loadAllSkills() {
-        console.log("📜 Scrolling to load all skills...");
-        var lastCount = 0;
-        for (var i = 0; i < 20; i++) {
+        var previous = -1;
+        var stable = 0;
+        for (var i = 0; i < 30 && !state.stop; i++) {
             window.scrollTo(0, document.body.scrollHeight);
-            await sleep(500);
+            await pause(800);
             var current = skillEditLinks().length;
-            if (current === lastCount && current > 0) break;
-            lastCount = current;
+            stable = current === previous ? stable + 1 : 0;
+            previous = current;
+            if (stable >= 3) break;
         }
         window.scrollTo(0, 0);
-        await sleep(500);
-        console.log("✅ Found " + skillEditLinks().length + " skills to delete.");
+        await pause(500);
+        console.log('Visible skills:', skillEditLinks().length);
     }
 
     async function deleteOneSkill() {
-        var links = skillEditLinks();
-        if (links.length === 0) return false;
+        var edit = skillEditLinks()[0];
+        if (!edit) return false;
+        var href = edit.getAttribute('href');
+        var label = edit.getAttribute('aria-label');
 
-        var before = links.length;
-        var editLink = links[0];
+        edit.scrollIntoView({ block: 'center' });
+        await pause(400);
+        if (state.stop) return false;
+        edit.click();
 
-        editLink.scrollIntoView({ behavior: 'instant', block: 'center' });
-        await sleep(200);
-        editLink.click();
+        var remove = await waitFor(function () { return btnByText('Delete skill'); });
+        if (state.stop) return false;
+        remove.click();
 
-        var deleteSkillBtn = await waitFor(function () { return btnByText('Delete skill'); });
-        deleteSkillBtn.click();
+        var confirm = await waitFor(function () { return btnByText('Delete'); });
+        if (state.stop) return false;
+        confirm.click();
 
-        var confirmBtn = await waitFor(function () { return btnByText('Delete'); });
-        confirmBtn.click();
-
-        await waitFor(function () { return skillEditLinks().length < before; });
+        await waitFor(function () {
+            return !skillEditLinks().some(function (a) {
+                return a.getAttribute('href') === href && a.getAttribute('aria-label') === label;
+            });
+        });
         return true;
     }
 
-    // ========== MAIN ==========
-    var janitor = setInterval(closeUpsell, 150);
-    var deleted = 0;
-    var consecutiveFailures = 0; // circuit breaker, restored from the original script
-
-    console.log("🚀 SKILL PURGE STARTED");
-
+    console.log('Skills remover started. To stop: window.linkedinSkillsRemover.stop = true');
     try {
         await loadAllSkills();
-
-        while (true) {
-            var remaining = skillEditLinks().length;
-
-            if (remaining === 0) {
+        while (!state.stop && state.deleted < MAX_DELETIONS) {
+            if (!skillEditLinks().length) {
                 await loadAllSkills();
-                remaining = skillEditLinks().length;
-                if (remaining === 0) {
-                    console.log("🎉 ALL DONE! Deleted " + deleted + " skills. Zero remaining.");
-                    break;
-                }
+                if (!skillEditLinks().length) break;
             }
-
-            console.log("🗑️ Deleting #" + (deleted + 1) + " | Remaining: " + remaining);
-
-            var success = false;
-            for (var attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-                try {
-                    success = await deleteOneSkill();
-                    if (success) break;
-                } catch (e) {
-                    console.log("⚠️ Attempt " + attempt + " failed. Retrying...");
-                    closeAllModals();
-                    await sleep(1000 * attempt);
-                }
-            }
-
-            if (success) {
-                deleted++;
-                consecutiveFailures = 0;
-                console.log("✅ Deleted #" + deleted);
+            if (!await deleteOneSkill()) break;
+            state.deleted++;
+            console.log('Deleted:', state.deleted);
+            if (state.deleted % BREAK_EVERY === 0) {
+                console.log('Taking a break...');
+                await pause(BREAK_DURATION);
             } else {
-                consecutiveFailures++;
-                console.log("❌ Couldn't delete a skill after " + MAX_RETRIES + " attempts (" + consecutiveFailures + " in a row). Re-scanning list...");
-                closeAllModals();
-                await sleep(2000);
-                await loadAllSkills();
-                if (consecutiveFailures >= 5) {
-                    console.log("🛑 Stopping after " + consecutiveFailures + " consecutive failures — likely rate-limited. Re-run later to finish.");
-                    break;
-                }
+                await pause(PAUSE_BETWEEN);
             }
-
-            await sleep(PAUSE_BETWEEN);
         }
+    } catch (error) {
+        console.error('Stopped:', error.message);
+        console.warn('Check the page before starting another run.');
     } finally {
-        clearInterval(janitor);
+        state.running = false;
+        console.log('Finished. Deleted:', state.deleted);
     }
-
-    console.log("🏁 TOTAL DELETED: " + deleted);
 })();
